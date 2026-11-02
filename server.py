@@ -232,7 +232,7 @@ class Handler(BaseHTTPRequestHandler):
             try: self.send(200,(ROOT/"index.html").read_bytes(),"text/html; charset=utf-8")
             except OSError: self.send(500,"Dashboard file missing","text/plain")
         elif path.path=="/api/runs": self.send(200,json.dumps(list_runs()))
-        elif path.path.startswith("/api/run/") and not path.path.endswith("/competitors"):
+        elif path.path.startswith("/api/run/") and not path.path.endswith(("/competitors","/competitor-pages","/sentiment","/validation")):
             parts=path.path.strip("/").split("/")
             try:
                 rid=int(parts[2])
@@ -281,6 +281,12 @@ class Handler(BaseHTTPRequestHandler):
             old,new=get_run(old_id),get_run(new_id)
             if not old or not new: return self.send(404,json.dumps({"error":"One or both runs were not found"}))
             self.send(200,json.dumps(compare_runs(old,new),ensure_ascii=False))
+        elif path.path.startswith("/api/run/") and path.path.endswith("/competitor-pages"):
+            try: rid=int(path.path.strip("/").split("/")[2])
+            except (ValueError,IndexError): return self.send(400,json.dumps({"error":"Invalid run id"}))
+            db=connect(); saved=db.execute("SELECT payload FROM competitor_reports WHERE run_id=?",(rid,)).fetchone(); db.close()
+            if not saved: return self.send(404,json.dumps({"error":"No competitor page report yet. Run page inspection first."}))
+            self.send(200,saved["payload"])
         elif path.path.startswith("/api/run/") and path.path.endswith("/competitors"):
             try: rid=int(path.path.strip("/").split("/")[2])
             except (ValueError,IndexError): return self.send(400,json.dumps({"error":"Invalid run id"}))
@@ -342,7 +348,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not data: return self.send(404,json.dumps({"error":"Run not found"}))
                 messages=payload.get("messages",[])
                 if not isinstance(messages,list) or not messages: return self.send(400,json.dumps({"error":"Send a message first."}))
-                context={"topic":data["run"]["topic"],"analysis":data["analysis"],"evidence":data["signals"][:30]}
+                db=connect()
+                history=memory_for_topic(db,data["run"]["topic"],limit=8)
+                db.close()
+                context={"topic":data["run"]["topic"],"analysis":data["analysis"],
+                         "evidence":data["signals"][:30],"cross_run_memory":history}
                 return self.send(200,json.dumps(ai_chat(messages,context),ensure_ascii=False))
             if self.path!="/api/search": return self.send(404,json.dumps({"error":"Not found"}))
             data=run_research(payload)

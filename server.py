@@ -5,6 +5,7 @@ import difflib, html, json, os, re, sqlite3, time, urllib.parse, urllib.request,
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from cashforge_intelligence import run_analysis
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -179,10 +180,17 @@ def get_run(run_id):
         host=urllib.parse.urlparse(x["url"]).netloc.lower().removeprefix("www.")
         domains[host]=domains.get(host,0)+1
     raw_records=sum(x["match_count"] for x in vals)
-    similar_records=sum(max(0,x["match_count"]-1) for x in vals)
-    return {"run":dict(run),"signals":vals,"metrics":{
+    unique_links=sum(1+len(json.loads(x.get("match_examples") or "[]")) for x in vals)
+    exact_duplicates=max(0,raw_records-unique_links)
+    similar_records=max(0,unique_links-len(vals))
+    analysis=run_analysis(run["topic"],run["objective"],vals,raw_records,
+      [x.strip() for x in run["summary"].split("Source issues:",1)[1].split("; ") if x.strip()]
+      if "Source issues:" in run["summary"] else [])
+    return {"run":dict(run),"signals":vals,"analysis":analysis,"metrics":{
       "sources":run["source_count"],"signals":len(vals),"raw_records":raw_records,
-      "similar_records":similar_records,"clusters":sum(1 for x in vals if x["match_count"]>1),
+      "unique_links":unique_links,"exact_duplicates":exact_duplicates,
+      "similar_records":similar_records,"grouped_records":max(0,raw_records-len(vals)),
+      "clusters":sum(1 for x in vals if len(json.loads(x.get("match_examples") or "[]"))>0),
       "unique_domains":len(domains),"avg_priority":round(sum(x["score"] for x in vals)/len(vals),1) if vals else 0}}
 
 def list_runs():

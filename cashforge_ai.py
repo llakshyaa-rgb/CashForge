@@ -6,7 +6,7 @@ from pathlib import Path
 DATA_DIR=Path(__file__).resolve().parent/"data"
 SETTINGS_FILE=DATA_DIR/"provider_settings.json"
 DEFAULTS={"provider":"openrouter","base_url":"https://openrouter.ai/api/v1",
-          "model":"openai/gpt-oss-20b:free","embedding_model":"openai/text-embedding-3-small"}
+          "model":"","embedding_model":"openai/text-embedding-3-small"}
 
 class AIUnavailable(RuntimeError):
     pass
@@ -20,7 +20,7 @@ def read_settings():
         pass
     if not data.get("api_key") and os.environ.get("OPENROUTER_API_KEY"):
         data.update(provider="openrouter",base_url="https://openrouter.ai/api/v1",
-                    model=os.environ.get("CASHFORGE_AI_MODEL",DEFAULTS["model"]),
+                    model=os.environ.get("CASHFORGE_AI_MODEL",""),
                     embedding_model=os.environ.get("CASHFORGE_EMBED_MODEL",DEFAULTS["embedding_model"]),
                     api_key=os.environ["OPENROUTER_API_KEY"])
     return data
@@ -31,7 +31,7 @@ def save_settings(payload):
     key=str(payload.get("api_key","")).strip()
     if not key: raise ValueError("Paste an API key.")
     base=("https://openrouter.ai/api/v1" if provider=="openrouter" else "https://api.openai.com/v1")
-    model=str(payload.get("model") or (DEFAULTS["model"] if provider=="openrouter" else "gpt-4o-mini")).strip()[:160]
+    model=str(payload.get("model") or "").strip()[:200]
     embed=str(payload.get("embedding_model") or ("openai/text-embedding-3-small" if provider=="openrouter" else "text-embedding-3-small")).strip()[:160]
     DATA_DIR.mkdir(parents=True,exist_ok=True)
     SETTINGS_FILE.write_text(json.dumps({"provider":provider,"base_url":base,"model":model,
@@ -39,6 +39,35 @@ def save_settings(payload):
     try: SETTINGS_FILE.chmod(0o600)
     except OSError: pass
     return {"provider":provider,"model":model,"embedding_model":embed,"configured":True}
+
+def list_models():
+    """Return the authenticated provider's live model catalogue, including published pricing."""
+    settings=read_settings()
+    key=str(settings.get("api_key","")).strip()
+    if not key:
+        raise AIUnavailable("Save your provider API key before loading models.")
+    base=str(settings.get("base_url","https://openrouter.ai/api/v1")).rstrip("/")
+    headers={"Authorization":"Bearer "+key,"Accept":"application/json"}
+    if settings.get("provider")=="openrouter":
+        headers.update({"HTTP-Referer":"http://127.0.0.1:8766","X-Title":"CashForge"})
+    req=urllib.request.Request(base+"/models",headers=headers)
+    try:
+        with urllib.request.urlopen(req,timeout=35) as response:
+            payload=json.loads(response.read(8_000_000).decode("utf-8","replace"))
+    except urllib.error.HTTPError as exc:
+        detail=exc.read(1200).decode("utf-8","replace")
+        raise AIUnavailable("Could not load provider models (HTTP "+str(exc.code)+"): "+detail) from exc
+    except Exception as exc:
+        raise AIUnavailable("Could not load provider models: "+str(exc)[:240]) from exc
+    rows=payload.get("data",[]) if isinstance(payload,dict) else []
+    models=[]
+    for row in rows:
+        if not isinstance(row,dict) or not row.get("id"): continue
+        pricing=row.get("pricing") or {}
+        models.append({"id":str(row["id"]),"name":str(row.get("name") or row["id"]),
+                       "prompt_price":str(pricing.get("prompt","")),
+                       "completion_price":str(pricing.get("completion",""))})
+    return sorted(models,key=lambda item:item["name"].lower())
 
 def clear_settings():
     try: SETTINGS_FILE.unlink()
@@ -79,7 +108,7 @@ def chat(messages,context=None,model=None):
             "demand, revenue or source citations. Explicitly say when evidence is insufficient. "
             "Give practical validation experiments and counterarguments.")
     if context: system+="\n\nCURRENT RESEARCH CONTEXT:\n"+json.dumps(context,ensure_ascii=False)[:24000]
-    payload={"model":model or settings.get("model") or DEFAULTS["model"],"temperature":0.2,
+    selected_model=str(model or settings.get("model") or "").strip()\n    if not selected_model: raise AIUnavailable("Choose a chat model in Settings, then save it.")\n    payload={"model":selected_model,"temperature":0.2,
              "messages":[{"role":"system","content":system}]+messages[-16:]}
     data=_post("/chat/completions",payload)
     return {"text":data["choices"][0]["message"]["content"],

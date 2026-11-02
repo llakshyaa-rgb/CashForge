@@ -264,7 +264,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200,build_html_report(data["analysis"],data["run"]),"text/html; charset=utf-8")
                 return self.send(200,json.dumps(data,ensure_ascii=False,default=str))
             return self.send(200,json.dumps(data,ensure_ascii=False,default=str))
-        elif path.path=="/api/ai/status": self.send(200,json.dumps(public_settings()))\n        elif path.path=="/api/ai/models":\n            try: self.send(200,json.dumps({"models":list_models()},ensure_ascii=False))\n            except AIUnavailable as exc: self.send(503,json.dumps({"error":str(exc)}))
+        elif path.path=="/api/ai/status":
+            self.send(200,json.dumps(public_settings()))
+        elif path.path=="/api/ai/models":
+            try:
+                self.send(200,json.dumps({"models":list_models()},ensure_ascii=False))
+            except AIUnavailable as exc:
+                self.send(503,json.dumps({"error":str(exc)}))
         elif path.path=="/api/monitors":
             db=connect(); self.send(200,json.dumps(list_monitors(db))); db.close()
         elif path.path.startswith("/api/memory/"):

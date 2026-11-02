@@ -21,9 +21,21 @@ class IntelligenceTests(unittest.TestCase):
             {"source": "HN", "title": "Manual invoicing tools cost too much", "excerpt": "I would pay for a better tool", "url": "https://a.example/3", "match_examples": "[]"},
         ]
         result = run_analysis("invoicing", "opportunity discovery", signals, 3)
-        self.assertEqual(result["schema_version"], "cashforge-analysis-v1")
-        self.assertEqual(result["pipeline"][-2]["status"], "not_run")
-        self.assertTrue(any("Competitor coverage is not assessed" in x for x in result["limitations"]))
+        self.assertEqual(result["schema_version"], "cashforge-intelligence-v2")
+        self.assertEqual(next(x["status"] for x in result["pipeline"] if x["id"] == "competitor_analysis"), "not_run")
+        self.assertTrue(any("Competitor coverage was not assessed" in x for x in result["limitations"]))
+        self.assertIn("idea", result["opportunities"][0])
+        self.assertIn("skeptic_review", result["opportunities"][0])
+
+    def test_grouped_examples_are_included_in_analysis(self):
+        signals = [{
+            "source": "HN", "title": "Manual invoice tools are expensive",
+            "excerpt": "Billing takes too long", "url": "https://a.example/1",
+            "match_count": 2,
+            "match_examples": '[{"source":"Reddit","title":"Invoice billing takes too long","excerpt":"Manual invoice work is expensive","url":"https://b.example/2"}]'
+        }]
+        result = run_analysis("invoicing", "research", signals, 2)
+        self.assertEqual(result["evidence"]["retained_records"], 2)
 
     def test_empty_evidence_is_safe(self):
         result = run_analysis("topic", "objective", [], 0)

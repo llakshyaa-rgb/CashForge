@@ -13,7 +13,7 @@ from typing import Any
 STOPWORDS = {
     "the", "and", "for", "with", "that", "this", "from", "have", "has",
     "are", "was", "were", "you", "your", "they", "them", "their", "our",
-    "but", "not", "can", "could", "would", "should", "about", "into",
+    "but", "can", "could", "would", "should", "about", "into",
     "when", "what", "why", "how", "who", "where", "which", "there",
     "then", "than", "also", "just", "very", "more", "some", "any",
 }
@@ -88,7 +88,7 @@ def group_evidence(items: list[dict[str, Any]], threshold: float = 0.30) -> list
             "size": len(group),
             "sources": sorted({str(x.get("source") or "Unknown") for x in group}),
             "domains": sorted({
-                re.sub(r"^www\\.", "", str(x.get("domain") or ""))
+                re.sub(r"^www\.", "", str(x.get("domain") or ""))
                 for x in group if x.get("domain")
             }),
             "evidence": group,
@@ -152,7 +152,7 @@ def run_analysis(topic: str, objective: str, signals: list[dict[str, Any]],
             "excerpt": row.get("excerpt", ""),
             "url": row.get("url", ""),
             "engagement": int(row.get("engagement") or 0),
-            "domain": re.sub(r"^www\\.", "", str(row.get("url", "")).split("/")[2].lower())
+            "domain": re.sub(r"^www\.", "", str(row.get("url", "")).split("/")[2].lower())
                 if "://" in str(row.get("url", "")) else "",
         })
         try:
@@ -167,7 +167,7 @@ def run_analysis(topic: str, objective: str, signals: list[dict[str, Any]],
                     "excerpt": extra.get("excerpt", ""),
                     "url": extra.get("url", ""),
                     "engagement": 0,
-                    "domain": re.sub(r"^www\\.", "", str(extra.get("url", "")).split("/")[2].lower())
+                    "domain": re.sub(r"^www\.", "", str(extra.get("url", "")).split("/")[2].lower())
                         if "://" in str(extra.get("url", "")) else "",
                 })
         except (ValueError, TypeError, AttributeError):

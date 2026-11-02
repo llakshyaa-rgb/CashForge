@@ -192,6 +192,13 @@ def get_run(run_id):
     analysis=run_analysis(run["topic"],run["objective"],vals,raw_records,
       [x.strip() for x in run["summary"].split("Source issues:",1)[1].split("; ") if x.strip()]
       if "Source issues:" in run["summary"] else [])
+    analysis["evidence"].update({
+      "unique_links":unique_links,
+      "exact_url_duplicates":exact_duplicates,
+      "similar_links_grouped":similar_records,
+      "total_records_grouped":max(0,raw_records-len(vals)),
+    })
+    db.close()
     return {"run":dict(run),"signals":vals,"analysis":analysis,"metrics":{
       "sources":run["source_count"],"signals":len(vals),"raw_records":raw_records,
       "unique_links":unique_links,"exact_duplicates":exact_duplicates,

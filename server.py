@@ -14,7 +14,7 @@ HOST = os.environ.get("CASHFORGE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("CASHFORGE_PORT", "8766"))
 UA = "CashForgeTrendRadar/0.1 (local research tool)"
 MAX_RESULTS_PER_QUERY = 35
-MAX_QUERY_ANGLES = 5
+MAX_QUERY_ANGLES = 7
 
 def connect():
     DATA.mkdir(exist_ok=True)
@@ -46,7 +46,7 @@ def clean_text(value, limit=900):
     return re.sub(r'\s+', ' ', value).strip()[:limit]
 
 def build_queries(topic):
-    angles=[topic, topic+' problems', topic+' alternatives', topic+' reviews', topic+' workflow']
+    angles=[topic, topic+' problems', topic+' alternatives', topic+' reviews', topic+' workflow', topic+' competitors pricing', topic+' complaints willingness to pay']
     seen=set(); result=[]
     for q in angles:
         if q.lower() not in seen: seen.add(q.lower()); result.append(q)

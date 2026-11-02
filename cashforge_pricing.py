@@ -34,7 +34,7 @@ def build_price_intelligence(page_report):
     rows=[]
     for page in page_report.get("pages",[]):
         if page.get("status")!="inspected": continue
-        text=page.get("excerpt","")
+        text=page.get("page_text") or page.get("excerpt","")
         prices=extract_prices(text)
         rows.append({"competitor_domain":page.get("domain"),"page_title":page.get("title"),
           "source_url":page.get("url"),"prices":prices,

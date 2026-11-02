@@ -9,6 +9,7 @@ from cashforge_intelligence import run_analysis, build_markdown_report, build_ht
 from cashforge_ai import chat as ai_chat, enrich_analysis, configured as ai_configured, AIUnavailable, public_settings, save_settings, clear_settings
 from cashforge_competitors import discover as discover_competitors
 from cashforge_monitor import init as init_monitors, create as create_monitor, list_all as list_monitors, set_enabled as set_monitor_enabled, due as due_monitors, mark_run as mark_monitor_run, compare_runs
+from cashforge_research_ops import init as init_research_ops, remember_run, memory_for_topic, inspect_pages, review_signals, validation_evidence
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -41,6 +42,7 @@ def connect():
     if 'selected_sources' not in {r[1] for r in db.execute('PRAGMA table_info(runs)')}:
         db.execute("ALTER TABLE runs ADD COLUMN selected_sources TEXT NOT NULL DEFAULT '[]'")
     init_monitors(db)
+    init_research_ops(db)
     db.execute("CREATE TABLE IF NOT EXISTS competitor_reports (run_id INTEGER PRIMARY KEY, payload TEXT NOT NULL, created_at TEXT NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS ai_reports (run_id INTEGER PRIMARY KEY, payload TEXT NOT NULL, created_at TEXT NOT NULL)")
     db.commit()
@@ -204,13 +206,15 @@ def get_run(run_id):
       "similar_links_grouped":similar_records,
       "total_records_grouped":max(0,raw_records-len(vals)),
     })
-    db.close()
-    return {"run":dict(run),"signals":vals,"analysis":analysis,"metrics":{
+    result={"run":dict(run),"signals":vals,"analysis":analysis,"metrics":{
       "sources":run["source_count"],"signals":len(vals),"raw_records":raw_records,
       "unique_links":unique_links,"exact_duplicates":exact_duplicates,
       "similar_records":similar_records,"grouped_records":max(0,raw_records-len(vals)),
       "clusters":sum(1 for x in vals if _examples(x)),
       "unique_domains":len(domains),"avg_priority":round(sum(x["score"] for x in vals)/len(vals),1) if vals else 0}}
+    remember_run(db,result)
+    db.close()
+    return result
 
 def list_runs():
     db=connect()
@@ -247,6 +251,30 @@ class Handler(BaseHTTPRequestHandler):
         elif path.path=="/api/ai/status": self.send(200,json.dumps(public_settings()))
         elif path.path=="/api/monitors":
             db=connect(); self.send(200,json.dumps(list_monitors(db))); db.close()
+        elif path.path.startswith("/api/memory/"):
+            topic=urllib.parse.unquote(path.path[len("/api/memory/"):])
+            db=connect(); data=memory_for_topic(db,topic); db.close()
+            self.send(200,json.dumps(data,ensure_ascii=False))
+        elif path.path.startswith("/api/run/") and path.path.endswith("/sentiment"):
+            try: rid=int(path.path.strip("/").split("/")[2])
+            except (ValueError,IndexError): return self.send(400,json.dumps({"error":"Invalid run id"}))
+            data=get_run(rid)
+            if not data: return self.send(404,json.dumps({"error":"Run not found"}))
+            self.send(200,json.dumps(review_signals(data["signals"]),ensure_ascii=False))
+        elif path.path.startswith("/api/run/") and path.path.endswith("/validation"):
+            try: rid=int(path.path.strip("/").split("/")[2])
+            except (ValueError,IndexError): return self.send(400,json.dumps({"error":"Invalid run id"}))
+            data=get_run(rid)
+            if not data: return self.send(404,json.dumps({"error":"Run not found"}))
+            self.send(200,json.dumps(validation_evidence(data["analysis"],data["signals"]),ensure_ascii=False))
+        elif path.path.startswith("/api/run/") and path.path.endswith("/competitor-pages"):
+            try: rid=int(path.path.strip("/").split("/")[2])
+            except (ValueError,IndexError): return self.send(400,json.dumps({"error":"Invalid run id"}))
+            data=get_run(rid)
+            if not data: return self.send(404,json.dumps({"error":"Run not found"}))
+            saved=discover_competitors(data["run"]["topic"],data["signals"])
+            report=inspect_pages(saved.get("records",[]))
+            self.send(200,json.dumps({"discovery":saved,"page_inspection":report},ensure_ascii=False))
         elif path.path.startswith("/api/compare/"):
             try: old_id,new_id=[int(x) for x in path.path.strip("/").split("/")[2:4]]
             except Exception: return self.send(400,json.dumps({"error":"Use /api/compare/OLD_ID/NEW_ID"}))
@@ -292,6 +320,23 @@ class Handler(BaseHTTPRequestHandler):
                 report=enrich_analysis(data["run"]["topic"],data["analysis"],data["signals"])
                 db=connect(); db.execute("INSERT OR REPLACE INTO ai_reports(run_id,payload,created_at) VALUES(?,?,?)",(rid,json.dumps(report,ensure_ascii=False),datetime.now(timezone.utc).isoformat())); db.commit(); db.close()
                 return self.send(200,json.dumps(report,ensure_ascii=False))
+            if self.path.startswith("/api/run/") and self.path.endswith("/validation"):
+                rid=int(self.path.strip("/").split("/")[2]); data=get_run(rid)
+                if not data: return self.send(404,json.dumps({"error":"Run not found"}))
+                report=validation_evidence(data["analysis"],data["signals"])
+                db=connect(); db.execute("INSERT OR REPLACE INTO validation_reviews(run_id,created_at,payload) VALUES(?,?,?)",(rid,datetime.now(timezone.utc).isoformat(),json.dumps(report,ensure_ascii=False))); db.commit(); db.close()
+                return self.send(200,json.dumps(report,ensure_ascii=False))
+            if self.path.startswith("/api/run/") and self.path.endswith("/competitor-pages"):
+                rid=int(self.path.strip("/").split("/")[2]); data=get_run(rid)
+                if not data: return self.send(404,json.dumps({"error":"Run not found"}))
+                saved=discover_competitors(data["run"]["topic"],data["signals"])
+                report={"discovery":saved,"page_inspection":inspect_pages(saved.get("records",[]))}
+                db=connect(); db.execute("INSERT OR REPLACE INTO competitor_reports(run_id,payload,created_at) VALUES(?,?,?)",(rid,json.dumps(report,ensure_ascii=False),datetime.now(timezone.utc).isoformat())); db.commit(); db.close()
+                return self.send(200,json.dumps(report,ensure_ascii=False))
+            if self.path.startswith("/api/run/") and self.path.endswith("/sentiment"):
+                rid=int(self.path.strip("/").split("/")[2]); data=get_run(rid)
+                if not data: return self.send(404,json.dumps({"error":"Run not found"}))
+                return self.send(200,json.dumps(review_signals(data["signals"]),ensure_ascii=False))
             if self.path.startswith("/api/run/") and self.path.endswith("/chat"):
                 rid=int(self.path.strip("/").split("/")[2]); data=get_run(rid)
                 if not data: return self.send(404,json.dumps({"error":"Run not found"}))

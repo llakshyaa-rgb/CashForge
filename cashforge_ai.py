@@ -28,8 +28,8 @@ def read_settings():
 def save_settings(payload):
     provider=str(payload.get("provider","openrouter")).lower()
     if provider not in {"openrouter","openai"}: raise ValueError("Choose OpenRouter or OpenAI.")
-    key=str(payload.get("api_key","")).strip()
-    if not key: raise ValueError("Paste an API key.")
+    key=str(payload.get("api_key","")).strip() or str(read_settings().get("api_key","")).strip()
+    if not key: raise ValueError("Paste an API key first.")
     base=("https://openrouter.ai/api/v1" if provider=="openrouter" else "https://api.openai.com/v1")
     model=str(payload.get("model") or "").strip()[:200]
     embed=str(payload.get("embedding_model") or ("openai/text-embedding-3-small" if provider=="openrouter" else "text-embedding-3-small")).strip()[:160]

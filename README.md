@@ -7,7 +7,8 @@ CashForge is a private-first, mobile-friendly opportunity research workspace. Th
 - Local web dashboard designed for phone screens.
 - Python standard-library server; no npm, database service, or paid hosting required.
 - Public-source discovery from Hacker News Algolia, Reddit's public JSON endpoints, and Google News RSS.
-- SQLite persistence for research runs and collected signals.
+- SQLite research library preserving past topics, objectives, selected source combinations, and results across refreshes.
+- Multi-angle topic discovery and grouped near-duplicate reporting, with representative links to inspect matching mentions.
 - Transparent heuristic scoring for discussion heat and evidence coverage.
 - Source-level inspection, filters, export, and repeatable topic studies.
 - Clear distinction between observed signals and hypotheses.
@@ -27,15 +28,16 @@ CashForge uses port `8766` by default (Purffle can keep using `8765`). Open `htt
 ## How it works
 
 1. Enter a topic and select a research objective.
-2. CashForge searches the selected public sources with bounded requests.
-3. Results are normalized, deduplicated, and stored in a local SQLite database.
+2. CashForge searches up to five related query angles per selected source, with bounded requests (up to 35 Hacker News / Google News items per angle and up to 50 Reddit items per angle, subject to source limits).
+3. Exact URL duplicates and title-similar records are grouped rather than silently discarded; counts and representative links remain visible. All research runs are stored in a local SQLite database.
 4. Each signal retains its original URL, source, timestamp, and available engagement metadata.
 5. The dashboard shows observed discussion, source diversity, and a provisional evidence score. Scores are prioritization aids, not verified market demand.
 6. Open each source and decide what to validate next.
 
 ## Privacy and safety
 
-- Research data stays in `data/cashforge.db` on the device.
+- Research data and saved research configurations stay in `data/cashforge.db` on the device.
+- Refreshing opens a fresh blank research screen; use the Research Library to reopen previous runs.
 - The server binds to loopback by default; it is not exposed to the public internet.
 - No cookies, account passwords, browser sessions, or tokens are collected.
 - Do not commit your local database or private research exports.

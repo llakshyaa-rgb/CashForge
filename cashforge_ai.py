@@ -108,7 +108,10 @@ def chat(messages,context=None,model=None):
             "demand, revenue or source citations. Explicitly say when evidence is insufficient. "
             "Give practical validation experiments and counterarguments.")
     if context: system+="\n\nCURRENT RESEARCH CONTEXT:\n"+json.dumps(context,ensure_ascii=False)[:24000]
-    selected_model=str(model or settings.get("model") or "").strip()\n    if not selected_model: raise AIUnavailable("Choose a chat model in Settings, then save it.")\n    payload={"model":selected_model,"temperature":0.2,
+    selected_model=str(model or settings.get("model") or "").strip()
+    if not selected_model:
+        raise AIUnavailable("Choose a chat model in Settings, then save it.")
+    payload={"model":selected_model,"temperature":0.2,
              "messages":[{"role":"system","content":system}]+messages[-16:]}
     data=_post("/chat/completions",payload)
     return {"text":data["choices"][0]["message"]["content"],

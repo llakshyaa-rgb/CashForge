@@ -43,6 +43,8 @@ def connect():
     if 'match_examples' not in cols: db.execute("ALTER TABLE signals ADD COLUMN match_examples TEXT NOT NULL DEFAULT '[]'")
     if 'selected_sources' not in {r[1] for r in db.execute('PRAGMA table_info(runs)')}:
         db.execute("ALTER TABLE runs ADD COLUMN selected_sources TEXT NOT NULL DEFAULT '[]'")
+    if 'display_name' not in {r[1] for r in db.execute('PRAGMA table_info(runs)')}:
+        db.execute("ALTER TABLE runs ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
     init_monitors(db)
     init_research_ops(db)
     init_fieldwork(db)
@@ -223,7 +225,7 @@ def get_run(run_id):
 
 def list_runs():
     db=connect()
-    return [dict(x) for x in db.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 500")]
+    return [dict(x) for x in db.execute("SELECT *, CASE WHEN display_name='' THEN topic ELSE display_name END AS display_name FROM runs ORDER BY id DESC LIMIT 500")]
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
@@ -322,6 +324,29 @@ class Handler(BaseHTTPRequestHandler):
             size=int(self.headers.get("Content-Length","0"))
             if size>30000: return self.send(413,json.dumps({"error":"Request too large"}))
             payload=json.loads(self.rfile.read(size) or b"{}")
+            if self.path.startswith("/api/run/") and self.path.endswith("/manage"):
+                parts=self.path.strip("/").split("/")
+                try: rid=int(parts[2])
+                except (ValueError,IndexError): return self.send(400,json.dumps({"error":"Invalid run id"}))
+                action=str(payload.get("action","")).lower()
+                db=connect()
+                if not db.execute("SELECT id FROM runs WHERE id=?",(rid,)).fetchone():
+                    db.close(); return self.send(404,json.dumps({"error":"Saved research session not found."}))
+                if action=="rename":
+                    name=str(payload.get("name","")).strip()[:120]
+                    if not name:
+                        db.close(); return self.send(400,json.dumps({"error":"Enter a name."}))
+                    db.execute("UPDATE runs SET display_name=? WHERE id=?",(name,rid))
+                    db.commit(); db.close()
+                    return self.send(200,json.dumps({"renamed":True,"name":name}))
+                if action=="delete":
+                    for table in ("signals","competitor_reports","ai_reports","validation_reviews","research_memory","interview_projects","interview_notes","demand_leads","competitor_profiles"):
+                        try: db.execute("DELETE FROM "+table+" WHERE run_id=?",(rid,))
+                        except sqlite3.OperationalError: pass
+                    db.execute("DELETE FROM runs WHERE id=?",(rid,))
+                    db.commit(); db.close()
+                    return self.send(200,json.dumps({"deleted":True,"id":rid}))
+                db.close(); return self.send(400,json.dumps({"error":"Unknown session action."}))
             if self.path=="/api/settings/provider":
                 result=save_settings(payload)
                 return self.send(200,json.dumps(result))

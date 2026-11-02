@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import html
 import json
+import email.utils
 import math
 import re
 from collections import Counter, defaultdict
@@ -171,9 +172,12 @@ def _monthly(records: list[dict[str, Any]]) -> dict[str, int]:
         raw = str(row.get("published") or "")
         try:
             dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            counts[dt.strftime("%Y-%m")] += 1
         except (ValueError, TypeError):
-            continue
+            try:
+                dt = email.utils.parsedate_to_datetime(raw)
+            except (ValueError, TypeError, OverflowError):
+                continue
+        counts[dt.strftime("%Y-%m")] += 1
     return dict(sorted(counts.items()))
 
 

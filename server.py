@@ -10,6 +10,7 @@ from cashforge_ai import chat as ai_chat, enrich_analysis, configured as ai_conf
 from cashforge_competitors import discover as discover_competitors
 from cashforge_monitor import init as init_monitors, create as create_monitor, list_all as list_monitors, set_enabled as set_monitor_enabled, due as due_monitors, mark_run as mark_monitor_run, compare_runs
 from cashforge_research_ops import init as init_research_ops, remember_run, memory_for_topic, inspect_pages, review_signals, validation_evidence
+from cashforge_fieldwork import init as init_fieldwork, create_interview_project, save_interview_note, save_demand_lead, save_competitor_profile, list_competitors, semantic_retrieve
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -43,6 +44,7 @@ def connect():
         db.execute("ALTER TABLE runs ADD COLUMN selected_sources TEXT NOT NULL DEFAULT '[]'")
     init_monitors(db)
     init_research_ops(db)
+    init_fieldwork(db)
     db.execute("CREATE TABLE IF NOT EXISTS competitor_reports (run_id INTEGER PRIMARY KEY, payload TEXT NOT NULL, created_at TEXT NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS ai_reports (run_id INTEGER PRIMARY KEY, payload TEXT NOT NULL, created_at TEXT NOT NULL)")
     db.commit()
@@ -345,6 +347,26 @@ class Handler(BaseHTTPRequestHandler):
                 rid=int(self.path.strip("/").split("/")[2]); data=get_run(rid)
                 if not data: return self.send(404,json.dumps({"error":"Run not found"}))
                 return self.send(200,json.dumps(review_signals(data["signals"]),ensure_ascii=False))
+            if self.path.startswith("/api/run/") and self.path.endswith("/interview-kit"):
+                rid=int(self.path.strip("/").split("/")[2]); data=get_run(rid)
+                if not data: return self.send(404,json.dumps({"error":"Run not found"}))
+                db=connect(); result=create_interview_project(db,rid,data["run"]["topic"],data["analysis"]); db.close()
+                return self.send(200,json.dumps(result,ensure_ascii=False))
+            if self.path.startswith("/api/run/") and self.path.endswith("/interview-notes"):
+                db=connect(); note_id=save_interview_note(db,payload.get("project_id"),payload.get("participant_code"),payload.get("consented") is True,payload.get("notes","")); db.close()
+                return self.send(200,json.dumps({"id":note_id,"saved":True}))
+            if self.path.startswith("/api/run/") and self.path.endswith("/demand-leads"):
+                rid=int(self.path.strip("/").split("/")[2]); db=connect()
+                lead_id=save_demand_lead(db,rid,payload.get("label",""),payload.get("method",""),payload.get("consented") is True,payload.get("price_test",""),payload.get("notes","")); db.close()
+                return self.send(200,json.dumps({"id":lead_id,"saved":True}))
+            if self.path.startswith("/api/run/") and self.path.endswith("/competitor-profile"):
+                rid=int(self.path.strip("/").split("/")[2]); db=connect()
+                save_competitor_profile(db,rid,payload.get("name",""),payload.get("url",""),payload.get("pricing",""),payload.get("features",""),payload.get("customer_notes",""),payload.get("verified") is True)
+                return self.send(200,json.dumps({"saved":True,"profiles":list_competitors(db,rid)}))
+            if self.path.startswith("/api/run/") and self.path.endswith("/retrieve"):
+                rid=int(self.path.strip("/").split("/")[2]); data=get_run(rid)
+                if not data: return self.send(404,json.dumps({"error":"Run not found"}))
+                return self.send(200,json.dumps(semantic_retrieve(payload.get("query",""),data["signals"]),ensure_ascii=False))
             if self.path.startswith("/api/run/") and self.path.endswith("/chat"):
                 rid=int(self.path.strip("/").split("/")[2]); data=get_run(rid)
                 if not data: return self.send(404,json.dumps({"error":"Run not found"}))

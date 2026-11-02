@@ -113,6 +113,20 @@ def group_evidence(items: list[dict[str, Any]], threshold: float = 0.48) -> list
     """Conservative weighted-term clustering; every retained record appears once."""
     if not items:
         return []
+    # Accept both raw collector records and already-normalized evidence.
+    # Keep caller data intact while filling fields required by the cluster output.
+    normalized = []
+    for original in items:
+        row = dict(original)
+        row.setdefault("source", "Unknown")
+        row.setdefault("title", "Untitled")
+        row.setdefault("excerpt", "")
+        row.setdefault("url", "")
+        row.setdefault("engagement", 0)
+        row.setdefault("analysis_text", _record_text(row))
+        row.setdefault("domain", _domain(row.get("url", "")))
+        normalized.append(row)
+    items = normalized
     texts = [str(x.get("analysis_text") or _record_text(x)) for x in items]
     vectors = _tfidf_vectors(texts)
     order = sorted(range(len(items)), key=lambda i: (items[i].get("engagement", 0), -i), reverse=True)

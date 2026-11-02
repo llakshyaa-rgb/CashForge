@@ -228,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
             try: self.send(200,(ROOT/"index.html").read_bytes(),"text/html; charset=utf-8")
             except OSError: self.send(500,"Dashboard file missing","text/plain")
         elif path.path=="/api/runs": self.send(200,json.dumps(list_runs()))
-        elif path.path.startswith("/api/run/"):
+        elif path.path.startswith("/api/run/") and not path.path.endswith("/competitors"):
             parts=path.path.strip("/").split("/")
             try:
                 rid=int(parts[2])

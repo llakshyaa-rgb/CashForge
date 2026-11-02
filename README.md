@@ -20,6 +20,10 @@ CashForge is a private-first, mobile-friendly opportunity research workspace. Th
 - Optional semantic embeddings for evidence clustering when configured and supported; local TF-IDF fallback remains available.
 - Competitor discovery workflow using public Hacker News and Google News search, with explicit unverified-lead warnings.
 - Persistent topic monitors, repeat scans while the local server is running, and run-to-run comparison API.
+- Cross-run research memory: recurring themes and prior evidence are stored locally and supplied to the AI analyst for the same normalized topic.
+- Bounded competitor/alternative page inspection: fetches a small sample of public HTTPS HTML pages and extracts price-like strings and feature-page clues for manual verification.
+- Customer-language sentiment hints (transparent keyword heuristics, not a trained sentiment model).
+- Validation evidence report with payment-language leads and concrete interview, concierge-pilot, price-commitment and retention experiments.
 - Source-level inspection, filters, export, and repeatable topic studies.
 - Clear distinction between observed signals and hypotheses.
 
@@ -41,7 +45,7 @@ Open **Settings** in the dashboard and choose OpenRouter or OpenAI. Paste your A
 
 The app can still run without a key using local analysis. Embeddings are optional and fall back to local TF-IDF if the provider/model does not support them.
 
-## Monitoring behavior\n\nTracked topics are scanned immediately and then at the selected interval while the local CashForge server process is running. If Termux kills the process, the device reboots, or connectivity is unavailable, scheduled scans pause; this is not a cloud scheduler. Compare runs using `/api/compare/OLD_ID/NEW_ID`.\n\nCompetitor discovery collects search leads, not verified competitor profiles. Pricing, features, reviews and customer complaints still require opening and validating original pages.\n\n## How it works
+## Research memory, competitor inspection and validation\n\nEvery opened research run is indexed in local SQLite memory by normalized topic. The AI chat receives up to eight prior snapshots for the same topic, including recurring themes. This is a retrieval aid, not an all-knowing memory system; near-matching topics are not automatically merged.\n\nCompetitor page inspection uses a small bounded sample of public HTTPS HTML pages from search leads. Extracted price-like strings and feature terms can be stale, misleading or unrelated to an actual plan. Treat them as leads and open original pages before making decisions. Sentiment is a transparent keyword heuristic and can misread context, sarcasm and negation.\n\nValidation reports surface payment-language mentions but do not establish that a buyer paid for the proposed product. The included experiments are suggestions; users must conduct interviews, pilots and price tests themselves.\n\n## Monitoring behavior\n\nTracked topics are scanned immediately and then at the selected interval while the local CashForge server process is running. If Termux kills the process, the device reboots, or connectivity is unavailable, scheduled scans pause; this is not a cloud scheduler. Compare runs using `/api/compare/OLD_ID/NEW_ID`.\n\nCompetitor discovery collects search leads, not verified competitor profiles. Pricing, features, reviews and customer complaints still require opening and validating original pages.\n\n## How it works
 
 1. Enter a topic and select a research objective.
 2. CashForge searches up to seven related query angles per selected source, with bounded requests (up to 35 Hacker News / Google News items per angle and up to 50 Reddit items per angle, subject to source limits).
@@ -76,7 +80,7 @@ For a saved run with ID `N`, open `/api/run/N/report.md`, `/api/run/N/report.htm
 
 ## Project status
 
-CashForge now includes a local opportunity-analysis and validation-hypothesis layer. AI chat and deep analysis, bounded competitor lead discovery, optional embeddings, local topic monitors and run comparisons are now integrated. Competitor verification, automatic operation while the phone/server is off, reliable cross-platform source coverage, and actual market-demand proof remain limitations.
+CashForge now includes a local opportunity-analysis and validation-hypothesis layer. AI chat and deep analysis, bounded competitor lead discovery, optional embeddings, local topic monitors and run comparisons are now integrated. Automated customer interviews, paid demand tests, reliable cross-platform source coverage, and operation while the phone/server is off remain limitations. Competitor page extraction and sentiment are intentionally labelled as unverified/heuristic.
 
 ## Inspiration and attribution
 

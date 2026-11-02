@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CashForge local-first Trend Radar. Python standard library only."""
 from __future__ import annotations
-import json, os, re, sqlite3, time, urllib.parse, urllib.request, xml.etree.ElementTree as ET
+import difflib, html, json, os, re, sqlite3, time, urllib.parse, urllib.request, xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -12,7 +12,8 @@ DB = DATA / "cashforge.db"
 HOST = os.environ.get("CASHFORGE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("CASHFORGE_PORT", "8766"))
 UA = "CashForgeTrendRadar/0.1 (local research tool)"
-MAX_RESULTS = 25
+MAX_RESULTS_PER_QUERY = 35
+MAX_QUERY_ANGLES = 5
 
 def connect():
     DATA.mkdir(exist_ok=True)
@@ -30,8 +31,33 @@ def connect():
       engagement INTEGER NOT NULL DEFAULT 0, score REAL NOT NULL DEFAULT 0,
       FOREIGN KEY(run_id) REFERENCES runs(id), UNIQUE(run_id,url)
     )""")
+    cols={r[1] for r in db.execute('PRAGMA table_info(signals)')}
+    if 'match_count' not in cols: db.execute('ALTER TABLE signals ADD COLUMN match_count INTEGER NOT NULL DEFAULT 1')
+    if 'match_examples' not in cols: db.execute("ALTER TABLE signals ADD COLUMN match_examples TEXT NOT NULL DEFAULT '[]'")
+    if 'selected_sources' not in {r[1] for r in db.execute('PRAGMA table_info(runs)')}:
+        db.execute("ALTER TABLE runs ADD COLUMN selected_sources TEXT NOT NULL DEFAULT '[]'")
     db.commit()
     return db
+
+def clean_text(value, limit=900):
+    value=html.unescape(str(value or ''))
+    value=re.sub(r'<[^>]+>', ' ', value)
+    return re.sub(r'\s+', ' ', value).strip()[:limit]
+
+def build_queries(topic):
+    angles=[topic, topic+' problems', topic+' alternatives', topic+' reviews', topic+' workflow']
+    seen=set(); result=[]
+    for q in angles:
+        if q.lower() not in seen: seen.add(q.lower()); result.append(q)
+    return result[:MAX_QUERY_ANGLES]
+
+def similarity(a,b):
+    ta=set(re.findall(r'[a-z0-9]{3,}',a.lower()))
+    tb=set(re.findall(r'[a-z0-9]{3,}',b.lower()))
+    if not ta or not tb: return 0.0
+    j=len(ta&tb)/len(ta|tb)
+    seq=difflib.SequenceMatcher(None,a.lower(),b.lower()).ratio()
+    return max(j,seq*0.82)
 
 def request_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
@@ -43,38 +69,53 @@ def request_text(url):
     with urllib.request.urlopen(req, timeout=12) as res:
         return res.read(2_000_000).decode("utf-8", "replace")
 
-def collect_hn(topic):
-    url = "https://hn.algolia.com/api/v1/search?"+urllib.parse.urlencode({"query":topic,"tags":"story","hitsPerPage":MAX_RESULTS})
-    data = request_json(url)
+def collect_hn(topic, queries=None):
     out=[]
-    for x in data.get("hits",[]):
-        link=x.get("url") or ("https://news.ycombinator.com/item?id="+str(x.get("objectID","")))
-        out.append(dict(source="Hacker News",title=x.get("title") or "Untitled",url=link,
-          excerpt=(x.get("story_text") or "")[:600],author=x.get("author") or "",
-          published=x.get("created_at") or "",engagement=int(x.get("points") or 0)+int(x.get("num_comments") or 0)))
+    for q in (queries or [topic]):
+        url="https://hn.algolia.com/api/v1/search?"+urllib.parse.urlencode({"query":q,"tags":"story","hitsPerPage":MAX_RESULTS_PER_QUERY})
+        data=request_json(url)
+        for x in data.get("hits",[]):
+            link=x.get("url") or ("https://news.ycombinator.com/item?id="+str(x.get("objectID","")))
+            out.append(dict(source="Hacker News",title=clean_text(x.get("title") or "Untitled",300),url=link,
+              excerpt=clean_text(x.get("story_text") or "",900),author=clean_text(x.get("author") or "",100),
+              published=x.get("created_at") or "",engagement=int(x.get("points") or 0)+int(x.get("num_comments") or 0)))
     return out
 
-def collect_reddit(topic):
-    url="https://www.reddit.com/search.json?"+urllib.parse.urlencode({"q":topic,"sort":"relevance","limit":MAX_RESULTS,"t":"year"})
-    data=request_json(url)
+def collect_reddit(topic, queries=None):
     out=[]
-    for wrap in data.get("data",{}).get("children",[]):
-        x=wrap.get("data",{})
-        out.append(dict(source="Reddit",title=x.get("title") or "Untitled",
-          url="https://www.reddit.com"+x.get("permalink",""),excerpt=(x.get("selftext") or "")[:600],
-          author=x.get("author") or "",published=datetime.fromtimestamp(x.get("created_utc",0),timezone.utc).isoformat(),
-          engagement=int(x.get("score") or 0)+int(x.get("num_comments") or 0)))
+    for q in (queries or [topic]):
+        url="https://www.reddit.com/search.json?"+urllib.parse.urlencode({"q":q,"sort":"relevance","limit":50,"t":"year"})
+        data=request_json(url)
+        for wrap in data.get("data",{}).get("children",[]):
+            x=wrap.get("data",{})
+            out.append(dict(source="Reddit",title=clean_text(x.get("title") or "Untitled",300),
+              url="https://www.reddit.com"+x.get("permalink",""),excerpt=clean_text(x.get("selftext") or "",900),
+              author=clean_text(x.get("author") or "",100),published=datetime.fromtimestamp(x.get("created_utc",0),timezone.utc).isoformat(),
+              engagement=int(x.get("score") or 0)+int(x.get("num_comments") or 0)))
     return out
 
-def collect_news(topic):
-    url="https://news.google.com/rss/search?"+urllib.parse.urlencode({"q":topic,"hl":"en-IN","gl":"IN","ceid":"IN:en"})
-    root=ET.fromstring(request_text(url))
+def collect_news(topic, queries=None):
     out=[]
-    for item in root.findall(".//item")[:MAX_RESULTS]:
-        out.append(dict(source="Google News",title=item.findtext("title") or "Untitled",
-          url=item.findtext("link") or "",excerpt=(item.findtext("description") or "")[:600],
-          author="",published=item.findtext("pubDate") or "",engagement=0))
+    for q in (queries or [topic]):
+        url="https://news.google.com/rss/search?"+urllib.parse.urlencode({"q":q,"hl":"en-IN","gl":"IN","ceid":"IN:en"})
+        root=ET.fromstring(request_text(url))
+        for item in root.findall(".//item")[:MAX_RESULTS_PER_QUERY]:
+            out.append(dict(source="Google News",title=clean_text(item.findtext("title") or "Untitled",300),
+              url=(item.findtext("link") or "").strip(),excerpt=clean_text(item.findtext("description") or "",900),
+              author="",published=item.findtext("pubDate") or "",engagement=0))
     return out
+
+def cluster_signals(items):
+    clusters=[]
+    for item in sorted(items,key=lambda x:x.get("engagement",0),reverse=True):
+        target=None
+        for cluster in clusters:
+            if similarity(item["title"],cluster[0]["title"]) >= 0.62:
+                target=cluster
+                break
+        if target is None: clusters.append([item])
+        else: target.append(item)
+    return clusters
 
 def score_signal(item):
     # Ranking aid only; raw engagement is not comparable across platforms.
@@ -90,29 +131,40 @@ def run_research(payload):
     collectors={"Hacker News":collect_hn,"Reddit":collect_reddit,"Google News":collect_news}
     db=connect()
     now=datetime.now(timezone.utc).isoformat()
-    cur=db.execute("INSERT INTO runs(topic,objective,created_at,status) VALUES(?,?,?,?)",(topic,objective,now,"collecting"))
+    queries=build_queries(topic)
+    cur=db.execute("INSERT INTO runs(topic,objective,created_at,status,selected_sources) VALUES(?,?,?,?,?)",
+                   (topic,objective,now,"collecting",json.dumps(sources)))
     run_id=cur.lastrowid
-    collected=[]; errors=[]
+    collected=[]
+    errors=[]
     for source in sources:
         if source not in collectors: continue
-        try:
-            collected.extend(collectors[source](topic))
-        except Exception as exc:
-            errors.append(source+": "+str(exc)[:180])
-    unique={}
+        try: collected.extend(collectors[source](topic,queries))
+        except Exception as exc: errors.append(source+": "+str(exc)[:180])
+    exact={}
     for item in collected:
         url=item.get("url","").strip()
-        if url and url not in unique: unique[url]=item
-    items=list(unique.values())
-    for item in items:
-        item["score"]=score_signal(item)
-        db.execute("""INSERT OR IGNORE INTO signals(run_id,source,title,url,excerpt,author,published,engagement,score)
-          VALUES(?,?,?,?,?,?,?,?,?)""",(run_id,item["source"],item["title"],item["url"],item["excerpt"],item["author"],item["published"],item["engagement"],item["score"]))
-    summary=f"{len(items)} unique public results from {len(set(x['source'] for x in items))} source(s)."
-    if errors: summary += " Some sources failed: "+"; ".join(errors)
-    status="complete" if items else "empty"
+        if not url.startswith(("http://","https://")): continue
+        if url in exact: exact[url]["_exact_copies"]+=1
+        else:
+            item["_exact_copies"]=1
+            exact[url]=item
+    unique=list(exact.values())
+    clusters=cluster_signals(unique)
+    for cluster in clusters:
+        representative=cluster[0]
+        representative["score"]=score_signal(representative)
+        examples=[{"source":x["source"],"title":x["title"],"url":x["url"],"excerpt":x["excerpt"][:300]} for x in cluster[1:]]
+        match_count=sum(x["_exact_copies"] for x in cluster)
+        db.execute("""INSERT OR IGNORE INTO signals(run_id,source,title,url,excerpt,author,published,engagement,score,match_count,match_examples)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+          (run_id,representative["source"],representative["title"],representative["url"],representative["excerpt"],
+           representative["author"],representative["published"],representative["engagement"],representative["score"],
+           match_count,json.dumps(examples)))
+    summary=str(len(collected))+" raw records collected; "+str(len(unique))+" unique links; "+str(len(unique)-len(clusters))+" similar records grouped."
+    if errors: summary += " Source issues: "+"; ".join(errors)
     db.execute("UPDATE runs SET status=?,source_count=?,signal_count=?,summary=? WHERE id=?",
-      (status,len(set(x["source"] for x in items)),len(items),summary,run_id))
+      ("complete" if collected else "empty",len(set(x["source"] for x in unique)),len(clusters),summary,run_id))
     db.commit()
     return get_run(run_id)
 
@@ -126,13 +178,16 @@ def get_run(run_id):
     for x in vals:
         host=urllib.parse.urlparse(x["url"]).netloc.lower().removeprefix("www.")
         domains[host]=domains.get(host,0)+1
+    raw_records=sum(x["match_count"] for x in vals)
+    similar_records=sum(max(0,x["match_count"]-1) for x in vals)
     return {"run":dict(run),"signals":vals,"metrics":{
-      "sources":run["source_count"],"signals":run["signal_count"],
+      "sources":run["source_count"],"signals":len(vals),"raw_records":raw_records,
+      "similar_records":similar_records,"clusters":sum(1 for x in vals if x["match_count"]>1),
       "unique_domains":len(domains),"avg_priority":round(sum(x["score"] for x in vals)/len(vals),1) if vals else 0}}
 
 def list_runs():
     db=connect()
-    return [dict(x) for x in db.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 40")]
+    return [dict(x) for x in db.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 500")]
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args): pass

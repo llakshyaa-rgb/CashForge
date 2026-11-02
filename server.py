@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 DB = DATA / "cashforge.db"
 HOST = os.environ.get("CASHFORGE_HOST", "127.0.0.1")
-PORT = int(os.environ.get("CASHFORGE_PORT", "8765"))
+PORT = int(os.environ.get("CASHFORGE_PORT", "8766"))
 UA = "CashForgeTrendRadar/0.1 (local research tool)"
 MAX_RESULTS = 25
 

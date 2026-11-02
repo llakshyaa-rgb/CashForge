@@ -253,7 +253,27 @@ def _skeptic(group: dict[str, Any], score: dict[str, Any]) -> dict[str, Any]:
 def run_analysis(topic: str, objective: str, signals: list[dict[str, Any]],
                  raw_records: int, source_errors: list[str] | None = None) -> dict[str, Any]:
     source_errors = source_errors or []
-    evidence = clean_evidence(signals)
+    expanded = []
+    for row in signals:
+        expanded.append(row)
+        try:
+            examples = row.get("match_examples") or "[]"
+            if isinstance(examples, str):
+                examples = json.loads(examples)
+            if isinstance(examples, list):
+                for item in examples:
+                    if isinstance(item, dict):
+                        expanded.append({
+                            "source": item.get("source", "Unknown"),
+                            "title": item.get("title", ""),
+                            "excerpt": item.get("excerpt", ""),
+                            "url": item.get("url", ""),
+                            "published": item.get("published", ""),
+                            "engagement": 0,
+                        })
+        except (ValueError, TypeError, AttributeError):
+            continue
+    evidence = clean_evidence(expanded)
     groups = group_evidence(evidence)
     monthly = _monthly(evidence)
     month_keys = list(monthly)

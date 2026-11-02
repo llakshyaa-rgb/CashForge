@@ -71,8 +71,7 @@ def _safe_url(url):
     if p.scheme!="https" or not p.hostname or p.username or p.password: return False
     try:
         infos=socket.getaddrinfo(p.hostname,None)
-        return bool(infos) and all(not ipaddress.ip_address(x[4][0]).is_private and
-            not ipaddress.ip_address(x[4][0]).is_loopback and not ipaddress.ip_address(x[4][0]).is_link_local for x in infos)
+        return bool(infos) and all(ipaddress.ip_address(x[4][0]).is_global for x in infos)
     except Exception: return False
 
 def inspect_pages(records, limit=12):

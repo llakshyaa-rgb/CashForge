@@ -107,7 +107,7 @@ def chat(messages,context=None,model=None):
             "Cite evidence using [E1], [E2] identifiers when available. Separate observed facts, "
             "inferences and unknowns. Never invent market size, competitor facts, pricing, quotes, "
             "demand, revenue or source citations. Explicitly say when evidence is insufficient. "
-            "Give practical validation experiments and counterarguments.")
+            "Give practical validation experiments and counterarguments. You are CashForge, not the underlying model or provider. Never identify yourself as DeepSeek, OpenAI, APInex, or another model/provider; never answer identity questions by claiming to be the model. If asked who you are, say you are CashForge’s research analyst. Do not mention model/provider details unless the user explicitly asks about configuration. Format substantial answers as clean Markdown with a short executive takeaway, descriptive headings, concise bullets, evidence citations, and a clearly labelled facts / hypotheses / unknowns distinction. Use tables only when they improve comparison.")
     if context: system+="\n\nCURRENT RESEARCH CONTEXT:\n"+json.dumps(context,ensure_ascii=False)[:24000]
     selected_model=str(model or settings.get("model") or "").strip()
     if not selected_model:
@@ -126,7 +126,7 @@ def enrich_analysis(topic,analysis,signals,model=None):
             "strongest_pain_points, competitor_questions_to_investigate, market_gap_hypotheses, "
             "customer_segments, willingness_to_pay_evidence, counterarguments, validation_plan, unknowns. "
             "Do not claim competitors were verified unless evidence explicitly identifies them. "
-            "Every factual claim must cite E IDs.\n\n"+
+            "Every factual claim must cite E IDs. Format the output as a polished human-readable Markdown report, not a JSON dump. Use a clear title, executive summary, concise sections, numbered findings, readable tables for comparisons, and explicit evidence/limitations callouts. Include a short decision summary at the end.\n\n"+
             json.dumps({"topic":topic,"local_analysis":analysis,"evidence":evidence},ensure_ascii=False)[:26000])
     return chat([{"role":"user","content":prompt}],model=model)
 

@@ -9,9 +9,13 @@ CashForge is a private-first, mobile-friendly opportunity research workspace. Th
 - Public-source discovery from Hacker News Algolia, Reddit's public JSON endpoints, and Google News RSS.
 - SQLite research library preserving past topics, objectives, selected source combinations, and results across refreshes.
 - Multi-angle topic discovery and grouped near-duplicate reporting, with representative links to inspect matching mentions.
-- A local evidence-analysis pipeline for theme discovery, recurring problem language, payment language, counter-signals, and cautious opportunity hypotheses.
-- Transparent, explainable opportunity scores with explicit confidence and competitor-research limitations.
-- A staged research review that separates collected evidence from hypotheses and unperformed analysis.
+- Local TF-IDF-style text weighting and conservative evidence clustering; grouped source links remain available to analysis.
+- Voice-of-customer indicators for recurring pain, payment language, solution language, and possible counter-signals.
+- Historical month buckets when source timestamps are available; changes are descriptive, never forecasts.
+- Per-theme opportunity hypotheses, audience and value-proposition hypotheses, revenue models to test, MVP scope, validation experiments, and a cautious 30/60/90-day go-to-market outline.
+- Skeptic review that flags thin source diversity, absent payment evidence, counter-signals, and missing competitor research.
+- Transparent opportunity scoring with separate evidence confidence and explicit limitations.
+- Markdown, standalone HTML, and JSON report exports for each saved run.
 - Source-level inspection, filters, export, and repeatable topic studies.
 - Clear distinction between observed signals and hypotheses.
 
@@ -30,12 +34,14 @@ CashForge uses port `8766` by default (Purffle can keep using `8765`). Open `htt
 ## How it works
 
 1. Enter a topic and select a research objective.
-2. CashForge searches up to five related query angles per selected source, with bounded requests (up to 35 Hacker News / Google News items per angle and up to 50 Reddit items per angle, subject to source limits).
+2. CashForge searches up to seven related query angles per selected source, with bounded requests (up to 35 Hacker News / Google News items per angle and up to 50 Reddit items per angle, subject to source limits).
 3. Exact URL duplicates and title-similar records are grouped rather than silently discarded; counts and representative links remain visible. All research runs are stored in a local SQLite database.
 4. Each signal retains its original URL, source, timestamp, and available engagement metadata.
-5. CashForge runs a local analysis pass over retained evidence: related-theme grouping, problem-language and payment-language indicators, possible counter-signals, and a provisional opportunity score.
-6. The analysis explicitly marks competitor research as not run. A candidate cluster is not labelled a confirmed market gap, and scores are not verified demand or revenue.
-7. The dashboard shows the research stages, evidence counts, source links, and limitations. Open the original sources and decide what to validate next.
+5. CashForge normalizes the evidence for analysis, groups related text conservatively, and keeps the original source records linked.
+6. It analyses pain language, payment language, possible counter-signals, dated mention history, and directional opportunity scores.
+7. For each theme it drafts a solution concept, validation experiments, an MVP outline, and a go-to-market hypothesis. A skeptic review records missing evidence and risks.
+8. Competitor coverage remains explicitly unassessed until a dedicated competitor-source workflow is completed. No theme is presented as a confirmed market gap.
+9. Open the original sources, inspect the limitations, and use the Markdown, HTML, or JSON report export for each saved run.
 
 ## Privacy and safety
 
@@ -46,9 +52,21 @@ CashForge uses port `8766` by default (Purffle can keep using `8765`). Open `htt
 - Do not commit your local database or private research exports.
 - Stop collection if a source blocks access or signals rate limiting.
 
+## Tests
+
+Run the standard-library test suite with:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+## Report exports
+
+For a saved run with ID `N`, open `/api/run/N/report.md`, `/api/run/N/report.html`, or `/api/run/N/report.json` on the local server.
+
 ## Project status
 
-The Trend Radar is the first working foundation. More CashForge modules (competitor analysis, product packaging, distribution, monetization, and performance feedback) are intentionally not included yet.
+CashForge now includes a local opportunity-analysis and validation-hypothesis layer. Dedicated competitor verification, an AI conversation workspace, and automatic scheduled monitoring are not yet implemented; the UI and reports must not imply otherwise.
 
 ## Inspiration and attribution
 

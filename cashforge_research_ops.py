@@ -101,7 +101,7 @@ def inspect_pages(records, limit=12):
             features=[term.strip() for term in feature_terms if term.lower() in low]
             title=re.search(r"<title[^>]*>(.*?)</title>",raw,re.I|re.S)
             results.append({"domain":host,"url":final,"status":"inspected","title":html.unescape(re.sub("<[^>]+>","",title.group(1))).strip()[:180] if title else row.get("title",""),
-                "pricing_mentions":prices,"feature_page_signals":features,"excerpt":text[:900],
+                "pricing_mentions":prices,"feature_page_signals":features,"excerpt":text[:900],"page_text":text[:30000],
                 "caveat":"Extracted page text is not a verified pricing/feature statement; inspect the source manually."})
         except Exception as exc:
             results.append({"domain":host,"url":url,"status":"failed","reason":str(exc)[:180]})

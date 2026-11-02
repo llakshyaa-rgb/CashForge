@@ -22,7 +22,7 @@ cd CashForge
 python server.py
 ```
 
-Open `http://127.0.0.1:8765` on the same device. Keep the terminal session running. No API key is required for the built-in public-source collectors.
+CashForge uses port `8766` by default (Purffle can keep using `8765`). Open `http://127.0.0.1:8766` on the same device. Keep the terminal session running. No API key is required for the built-in public-source collectors.
 
 ## How it works
 

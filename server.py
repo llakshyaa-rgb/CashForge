@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from cashforge_intelligence import run_analysis, build_markdown_report, build_html_report
+from cashforge_ai import chat as ai_chat, enrich_analysis, configured as ai_configured, AIUnavailable
+from cashforge_competitors import discover as discover_competitors
+from cashforge_monitor import init as init_monitors, create as create_monitor, list_all as list_monitors, set_enabled as set_monitor_enabled
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -37,6 +40,9 @@ def connect():
     if 'match_examples' not in cols: db.execute("ALTER TABLE signals ADD COLUMN match_examples TEXT NOT NULL DEFAULT '[]'")
     if 'selected_sources' not in {r[1] for r in db.execute('PRAGMA table_info(runs)')}:
         db.execute("ALTER TABLE runs ADD COLUMN selected_sources TEXT NOT NULL DEFAULT '[]'")
+    init_monitors(db)
+    db.execute("CREATE TABLE IF NOT EXISTS competitor_reports (run_id INTEGER PRIMARY KEY, payload TEXT NOT NULL, created_at TEXT NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS ai_reports (run_id INTEGER PRIMARY KEY, payload TEXT NOT NULL, created_at TEXT NOT NULL)")
     db.commit()
     return db
 
@@ -238,11 +244,57 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200,build_html_report(data["analysis"],data["run"]),"text/html; charset=utf-8")
                 return self.send(200,json.dumps(data,ensure_ascii=False,default=str))
             return self.send(200,json.dumps(data,ensure_ascii=False,default=str))
-        elif path.path=="/health": self.send(200,json.dumps({"ok":True,"app":"CashForge","database":str(DB.name)}))
+        elif path.path=="/api/ai/status": self.send(200,json.dumps({"configured":ai_configured(),"provider":"OpenRouter","model":os.environ.get("CASHFORGE_AI_MODEL","openai/gpt-oss-20b:free")}))
+        elif path.path=="/api/monitors":
+            db=connect(); self.send(200,json.dumps(list_monitors(db))); db.close()
+        elif path.path.startswith("/api/run/") and path.path.endswith("/competitors"):
+            try: rid=int(path.path.strip("/").split("/")[2])
+            except (ValueError,IndexError): return self.send(400,json.dumps({"error":"Invalid run id"}))
+            db=connect(); saved=db.execute("SELECT payload FROM competitor_reports WHERE run_id=?",(rid,)).fetchone(); db.close()
+            if not saved: return self.send(404,json.dumps({"error":"No competitor report yet."}))
+            self.send(200,saved["payload"])
+        elif path.path=="/health": self.send(200,json.dumps({"ok":True,"app":"CashForge","database":str(DB.name),"ai_configured":ai_configured()}))
         else: self.send(404,json.dumps({"error":"Not found"}))
     def do_POST(self):
-        if self.path!="/api/search": return self.send(404,json.dumps({"error":"Not found"}))
         try:
+            size=int(self.headers.get("Content-Length","0"))
+            if size>30000: return self.send(413,json.dumps({"error":"Request too large"}))
+            payload=json.loads(self.rfile.read(size) or b"{}")
+            if self.path=="/api/monitor":
+                topic=str(payload.get("topic","")).strip()
+                if len(topic)<3: return self.send(400,json.dumps({"error":"Enter a topic with at least 3 characters."}))
+                db=connect(); mid=create_monitor(db,topic,payload.get("objective","Business opportunity discovery"),payload.get("sources",["Hacker News","Google News"]),payload.get("interval_hours",24)); db.close()
+                return self.send(200,json.dumps({"id":mid,"status":"monitor_created"}))
+            if self.path.startswith("/api/monitor/") and self.path.endswith("/toggle"):
+                mid=int(self.path.strip("/").split("/")[3]); db=connect(); set_monitor_enabled(db,mid,payload.get("enabled",True)); db.close()
+                return self.send(200,json.dumps({"status":"updated"}))
+            if self.path.startswith("/api/run/") and self.path.endswith("/competitors"):
+                rid=int(self.path.strip("/").split("/")[2]); data=get_run(rid)
+                if not data: return self.send(404,json.dumps({"error":"Run not found"}))
+                report=discover_competitors(data["run"]["topic"],data["signals"])
+                db=connect(); db.execute("INSERT OR REPLACE INTO competitor_reports(run_id,payload,created_at) VALUES(?,?,?)",(rid,json.dumps(report,ensure_ascii=False),datetime.now(timezone.utc).isoformat())); db.commit(); db.close()
+                return self.send(200,json.dumps(report,ensure_ascii=False))
+            if self.path.startswith("/api/run/") and self.path.endswith("/ai-analysis"):
+                rid=int(self.path.strip("/").split("/")[2]); data=get_run(rid)
+                if not data: return self.send(404,json.dumps({"error":"Run not found"}))
+                report=enrich_analysis(data["run"]["topic"],data["analysis"],data["signals"])
+                db=connect(); db.execute("INSERT OR REPLACE INTO ai_reports(run_id,payload,created_at) VALUES(?,?,?)",(rid,json.dumps(report,ensure_ascii=False),datetime.now(timezone.utc).isoformat())); db.commit(); db.close()
+                return self.send(200,json.dumps(report,ensure_ascii=False))
+            if self.path.startswith("/api/run/") and self.path.endswith("/chat"):
+                rid=int(self.path.strip("/").split("/")[2]); data=get_run(rid)
+                if not data: return self.send(404,json.dumps({"error":"Run not found"}))
+                messages=payload.get("messages",[])
+                if not isinstance(messages,list) or not messages: return self.send(400,json.dumps({"error":"Send a message first."}))
+                context={"topic":data["run"]["topic"],"analysis":data["analysis"],"evidence":data["signals"][:30]}
+                return self.send(200,json.dumps(ai_chat(messages,context),ensure_ascii=False))
+            if self.path!="/api/search": return self.send(404,json.dumps({"error":"Not found"}))
+            data=run_research(payload)
+            return self.send(200,json.dumps(data))
+        except AIUnavailable as exc: return self.send(503,json.dumps({"error":str(exc),"ai_configured":ai_configured()}))
+        except ValueError as exc: return self.send(400,json.dumps({"error":str(exc)}))
+        except Exception as exc: return self.send(500,json.dumps({"error":"Research failed: "+str(exc)[:240]}))
+
+if __name__=="__main__":
             size=int(self.headers.get("Content-Length","0"))
             if size>20000: return self.send(413,json.dumps({"error":"Request too large"}))
             payload=json.loads(self.rfile.read(size) or b"{}")

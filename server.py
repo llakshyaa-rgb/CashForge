@@ -11,6 +11,7 @@ from cashforge_competitors import discover as discover_competitors
 from cashforge_monitor import init as init_monitors, create as create_monitor, list_all as list_monitors, set_enabled as set_monitor_enabled, due as due_monitors, mark_run as mark_monitor_run, compare_runs
 from cashforge_research_ops import init as init_research_ops, remember_run, memory_for_topic, inspect_pages, review_signals, validation_evidence
 from cashforge_fieldwork import init as init_fieldwork, create_interview_project, save_interview_note, save_demand_lead, save_competitor_profile, list_competitors, semantic_retrieve
+from cashforge_pricing import build_price_intelligence, integration_package
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -236,6 +237,17 @@ class Handler(BaseHTTPRequestHandler):
             try: self.send(200,(ROOT/"index.html").read_bytes(),"text/html; charset=utf-8")
             except OSError: self.send(500,"Dashboard file missing","text/plain")
         elif path.path=="/api/runs": self.send(200,json.dumps(list_runs()))
+        elif path.path.startswith("/api/run/") and path.path.endswith("/orbit"):
+            try: rid=int(path.path.strip("/").split("/")[2])
+            except (ValueError,IndexError): return self.send(400,json.dumps({"error":"Invalid run id"}))
+            data=get_run(rid)
+            if not data: return self.send(404,json.dumps({"error":"Run not found"}))
+            db=connect(); saved=db.execute("SELECT payload FROM competitor_reports WHERE run_id=?",(rid,)).fetchone(); db.close()
+            competitor=json.loads(saved["payload"]) if saved else {}
+            page_report=competitor.get("page_inspection",competitor)
+            prices=build_price_intelligence(page_report) if page_report else {}
+            package=integration_package(data,prices,competitor)
+            return self.send(200,json.dumps(package,ensure_ascii=False,default=str))
         elif path.path.startswith("/api/run/") and not path.path.endswith(("/competitors","/competitor-pages","/sentiment","/validation")):
             parts=path.path.strip("/").split("/")
             try:
@@ -340,7 +352,8 @@ class Handler(BaseHTTPRequestHandler):
                 rid=int(self.path.strip("/").split("/")[2]); data=get_run(rid)
                 if not data: return self.send(404,json.dumps({"error":"Run not found"}))
                 saved=discover_competitors(data["run"]["topic"],data["signals"])
-                report={"discovery":saved,"page_inspection":inspect_pages(saved.get("records",[]))}
+                page_report=inspect_pages(saved.get("records",[]))
+                report={"discovery":saved,"page_inspection":page_report,"price_intelligence":build_price_intelligence(page_report)}
                 db=connect(); db.execute("INSERT OR REPLACE INTO competitor_reports(run_id,payload,created_at) VALUES(?,?,?)",(rid,json.dumps(report,ensure_ascii=False),datetime.now(timezone.utc).isoformat())); db.commit(); db.close()
                 return self.send(200,json.dumps(report,ensure_ascii=False))
             if self.path.startswith("/api/run/") and self.path.endswith("/sentiment"):

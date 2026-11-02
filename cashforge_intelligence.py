@@ -128,7 +128,19 @@ def group_evidence(items: list[dict[str, Any]], threshold: float = 0.48) -> list
         normalized.append(row)
     items = normalized
     texts = [str(x.get("analysis_text") or _record_text(x)) for x in items]
+    algorithm = "local_tfidf"
     vectors = _tfidf_vectors(texts)
+    # Optional semantic vectors; safely fall back to local lexical weighting.
+    if len(texts) <= 64:
+        try:
+            from cashforge_ai import embeddings, configured
+            if configured():
+                dense = embeddings(texts)
+                if len(dense) == len(texts) and dense and all(isinstance(v, list) for v in dense):
+                    vectors = [{str(i): float(value) for i, value in enumerate(row)} for row in dense]
+                    algorithm = "provider_embeddings"
+        except Exception:
+            pass
     order = sorted(range(len(items)), key=lambda i: (items[i].get("engagement", 0), -i), reverse=True)
     groups: list[list[int]] = []
     centroids: list[dict[str, float]] = []
@@ -159,6 +171,7 @@ def group_evidence(items: list[dict[str, Any]], threshold: float = 0.48) -> list
             "sources": sorted({x["source"] for x in records}),
             "domains": sorted({x["domain"] for x in records if x["domain"]}),
             "keywords": [w for w, _ in words.most_common(8)],
+            "similarity_method": algorithm,
             "evidence": records,
         })
     return sorted(result, key=lambda x: (x["size"], len(x["sources"])), reverse=True)

@@ -180,7 +180,9 @@ def run_research(payload):
 def get_run(run_id):
     db=connect()
     run=db.execute("SELECT * FROM runs WHERE id=?",(run_id,)).fetchone()
-    if not run: return None
+    if not run:
+        db.close()
+        return None
     signals=db.execute("SELECT * FROM signals WHERE run_id=? ORDER BY score DESC, engagement DESC",(run_id,)).fetchall()
     vals=[dict(x) for x in signals]
     domains={}

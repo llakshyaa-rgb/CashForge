@@ -46,6 +46,15 @@ class IntelligenceTests(unittest.TestCase):
         self.assertIn("<!doctype html>", page.lower())
         self.assertIn("Research limitations", markdown)
 
+    def test_rss_dates_are_counted_in_trend_history(self):
+        signals = [
+            {"source": "News", "title": "Small shop billing problems", "excerpt": "Manual work is slow", "url": "https://a.example/1", "published": "Mon, 02 Jun 2025 10:00:00 GMT"},
+            {"source": "News", "title": "Small shop billing issues", "excerpt": "Manual work is frustrating", "url": "https://b.example/2", "published": "Wed, 02 Jul 2025 10:00:00 GMT"},
+        ]
+        result = run_analysis("billing", "research", signals, 2)
+        self.assertEqual(result["trends"]["mentions_by_month"], {"2025-06": 1, "2025-07": 1})
+        self.assertEqual(result["trends"]["month_over_month_change_pct"], 0.0)
+
     def test_empty_evidence_is_safe(self):
         result = run_analysis("topic", "objective", [], 0)
         self.assertEqual(result["opportunities"], [])

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from cashforge_intelligence import run_analysis, build_markdown_report, build_html_report
-from cashforge_ai import chat as ai_chat, enrich_analysis, configured as ai_configured, AIUnavailable, public_settings, save_settings, clear_settings
+from cashforge_ai import chat as ai_chat, enrich_analysis, configured as ai_configured, AIUnavailable, public_settings, save_settings, clear_settings, list_models
 from cashforge_competitors import discover as discover_competitors
 from cashforge_monitor import init as init_monitors, create as create_monitor, list_all as list_monitors, set_enabled as set_monitor_enabled, due as due_monitors, mark_run as mark_monitor_run, compare_runs
 from cashforge_research_ops import init as init_research_ops, remember_run, memory_for_topic, inspect_pages, review_signals, validation_evidence
@@ -264,7 +264,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200,build_html_report(data["analysis"],data["run"]),"text/html; charset=utf-8")
                 return self.send(200,json.dumps(data,ensure_ascii=False,default=str))
             return self.send(200,json.dumps(data,ensure_ascii=False,default=str))
-        elif path.path=="/api/ai/status": self.send(200,json.dumps(public_settings()))
+        elif path.path=="/api/ai/status": self.send(200,json.dumps(public_settings()))\n        elif path.path=="/api/ai/models":\n            try: self.send(200,json.dumps({"models":list_models()},ensure_ascii=False))\n            except AIUnavailable as exc: self.send(503,json.dumps({"error":str(exc)}))
         elif path.path=="/api/monitors":
             db=connect(); self.send(200,json.dumps(list_monitors(db))); db.close()
         elif path.path.startswith("/api/memory/"):

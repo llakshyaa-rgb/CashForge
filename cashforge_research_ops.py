@@ -95,9 +95,9 @@ def inspect_pages(records, limit=12):
                 if "html" not in ctype.lower(): raise ValueError("Page is not HTML.")
                 raw=res.read(350_000).decode("utf-8","replace")
             parser=_Text(); parser.feed(raw)
-            text=re.sub(r"\\s+"," "," ".join(parser.parts)).strip()
+            text=re.sub(r"\s+"," "," ".join(parser.parts)).strip()
             low=text.lower()
-            prices=sorted(set(re.findall(r"(?:[$₹€£]\\s?\\d[\\d,.]*(?:\\s?\\/\\s?(?:mo|month|year|yr))?|\\d[\\d,.]*\\s?(?:usd|inr)\\s?(?:per month|monthly|annually))",text,re.I)))[:12]
+            prices=sorted(set(re.findall(r"(?:[$₹€£]\s?\d[\d,.]*(?:\s?\/\s?(?:mo|month|year|yr))?|\d[\d,.]*\s?(?:usd|inr)\s?(?:per month|monthly|annually))",text,re.I)))[:12]
             feature_terms=["pricing","features","integrations","free trial","enterprise"," API ","automation","analytics","security","support","mobile app"]
             features=[term.strip() for term in feature_terms if term.lower() in low]
             title=re.search(r"<title[^>]*>(.*?)</title>",raw,re.I|re.S)
@@ -129,7 +129,7 @@ def validation_evidence(analysis, signals):
     evidence=[]
     for i,s in enumerate(signals[:100],1):
         txt=(str(s.get("title",""))+" "+str(s.get("excerpt",""))).lower()
-        if re.search(r"\\b(pay|paid|paying|subscription|pricing|price|budget|cost|buy|purchase|revenue)\\b",txt):
+        if re.search(r"\b(pay|paid|paying|subscription|pricing|price|budget|cost|buy|purchase|revenue)\b",txt):
             evidence.append({"id":"P"+str(i),"source":s.get("source"),"title":s.get("title"),"url":s.get("url"),
                              "excerpt":str(s.get("excerpt",""))[:300]})
     return {"payment_language_records":len(evidence),"evidence":evidence[:30],

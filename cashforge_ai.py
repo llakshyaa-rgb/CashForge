@@ -87,7 +87,7 @@ def chat(messages,context=None,model=None):
 
 def enrich_analysis(topic,analysis,signals,model=None):
     evidence=[{"id":"E"+str(i),"source":row.get("source"),"title":row.get("title"),
-               "excerpt":row.get("excerpt","")[:450],"url":row.get("url)}
+               "excerpt":row.get("excerpt","")[:450],"url":row.get("url")}
               for i,row in enumerate(signals[:45],1)]
     prompt=("Analyze this research snapshot. Return a concise structured report with executive_summary, "
             "strongest_pain_points, competitor_questions_to_investigate, market_gap_hypotheses, "

@@ -14,6 +14,24 @@ class CashForgeTests(unittest.TestCase):
         self.assertIn("runs",tables)
         self.assertIn("signals",tables)
 
+    def test_query_angles_expand(self):
+        queries=server.build_queries("AI trackers")
+        self.assertGreaterEqual(len(queries),3)
+        self.assertEqual(queries[0],"AI trackers")
+
+    def test_html_is_cleaned(self):
+        self.assertEqual(server.clean_text("<b>AI tracker</b> &amp; tools"),"AI tracker & tools")
+
+    def test_similar_titles_are_grouped_not_lost(self):
+        items=[
+            {"title":"AI tracker for small businesses","engagement":10},
+            {"title":"AI tracker tools for small business","engagement":5},
+            {"title":"Gardening tips for beginners","engagement":2},
+        ]
+        groups=server.cluster_signals(items)
+        self.assertEqual(sum(len(group) for group in groups),3)
+        self.assertLess(len(groups),3)
+
     def test_topic_is_required(self):
         with self.assertRaises(ValueError):
             server.run_research({"topic":"  ","sources":[]})

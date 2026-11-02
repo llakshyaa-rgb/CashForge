@@ -31,10 +31,16 @@ class ExtensionTests(unittest.TestCase):
 
     def test_ai_requires_key_without_crashing_local_mode(self):
         import os
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
         old = os.environ.pop("OPENROUTER_API_KEY", None)
         try:
-            with self.assertRaises(AIUnavailable):
-                chat([{"role": "user", "content": "test"}])
+            # Isolate this test from the developer's real, locally saved provider key.
+            with tempfile.TemporaryDirectory() as tmp:
+                with patch("cashforge_ai.SETTINGS_FILE", Path(tmp) / "provider_settings.json"):
+                    with self.assertRaises(AIUnavailable):
+                        chat([{"role": "user", "content": "test"}])
         finally:
             if old is not None:
                 os.environ["OPENROUTER_API_KEY"] = old

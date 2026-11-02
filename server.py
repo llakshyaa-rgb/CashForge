@@ -5,7 +5,7 @@ import difflib, html, json, os, re, sqlite3, time, urllib.parse, urllib.request,
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from cashforge_intelligence import run_analysis
+from cashforge_intelligence import run_analysis, build_markdown_report, build_html_report
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -180,7 +180,13 @@ def get_run(run_id):
         host=urllib.parse.urlparse(x["url"]).netloc.lower().removeprefix("www.")
         domains[host]=domains.get(host,0)+1
     raw_records=sum(x["match_count"] for x in vals)
-    unique_links=sum(1+len(json.loads(x.get("match_examples") or "[]")) for x in vals)
+    def _examples(row):
+        try:
+            parsed=json.loads(row.get("match_examples") or "[]")
+            return parsed if isinstance(parsed,list) else []
+        except (ValueError,TypeError):
+            return []
+    unique_links=sum(1+len(_examples(x)) for x in vals)
     exact_duplicates=max(0,raw_records-unique_links)
     similar_records=max(0,unique_links-len(vals))
     analysis=run_analysis(run["topic"],run["objective"],vals,raw_records,
@@ -190,7 +196,7 @@ def get_run(run_id):
       "sources":run["source_count"],"signals":len(vals),"raw_records":raw_records,
       "unique_links":unique_links,"exact_duplicates":exact_duplicates,
       "similar_records":similar_records,"grouped_records":max(0,raw_records-len(vals)),
-      "clusters":sum(1 for x in vals if len(json.loads(x.get("match_examples") or "[]"))>0),
+      "clusters":sum(1 for x in vals if _examples(x)),
       "unique_domains":len(domains),"avg_priority":round(sum(x["score"] for x in vals)/len(vals),1) if vals else 0}}
 
 def list_runs():
@@ -210,9 +216,21 @@ class Handler(BaseHTTPRequestHandler):
             except OSError: self.send(500,"Dashboard file missing","text/plain")
         elif path.path=="/api/runs": self.send(200,json.dumps(list_runs()))
         elif path.path.startswith("/api/run/"):
-            try: rid=int(path.path.rsplit("/",1)[1]); data=get_run(rid)
-            except ValueError: data=None
-            self.send(200 if data else 404,json.dumps(data or {"error":"Run not found"}))
+            parts=path.path.strip("/").split("/")
+            try:
+                rid=int(parts[2])
+                data=get_run(rid)
+            except (ValueError,IndexError):
+                data=None
+            if not data:
+                return self.send(404,json.dumps({"error":"Run not found"}))
+            if len(parts)==4 and parts[3] in {"report.md","report.html","report.json"}:
+                if parts[3]=="report.md":
+                    return self.send(200,build_markdown_report(data["analysis"],data["run"]),"text/markdown; charset=utf-8")
+                if parts[3]=="report.html":
+                    return self.send(200,build_html_report(data["analysis"],data["run"]),"text/html; charset=utf-8")
+                return self.send(200,json.dumps(data,ensure_ascii=False,default=str))
+            return self.send(200,json.dumps(data,ensure_ascii=False,default=str))
         elif path.path=="/health": self.send(200,json.dumps({"ok":True,"app":"CashForge","database":str(DB.name)}))
         else: self.send(404,json.dumps({"error":"Not found"}))
     def do_POST(self):

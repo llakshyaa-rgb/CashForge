@@ -300,15 +300,6 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as exc: return self.send(400,json.dumps({"error":str(exc)}))
         except Exception as exc: return self.send(500,json.dumps({"error":"Research failed: "+str(exc)[:240]}))
 
-if __name__=="__main__":
-            size=int(self.headers.get("Content-Length","0"))
-            if size>20000: return self.send(413,json.dumps({"error":"Request too large"}))
-            payload=json.loads(self.rfile.read(size) or b"{}")
-            data=run_research(payload)
-            self.send(200,json.dumps(data))
-        except ValueError as exc: self.send(400,json.dumps({"error":str(exc)}))
-        except Exception as exc: self.send(500,json.dumps({"error":"Research failed: "+str(exc)[:240]}))
-
 def monitor_worker():
     while True:
         try:
@@ -318,9 +309,10 @@ def monitor_worker():
                     data=run_research({"topic":monitor["topic"],"objective":monitor["objective"],
                                        "sources":json.loads(monitor["sources"])})
                     mark_monitor_run(db,monitor["id"],data["run"]["id"],monitor["interval_hours"])
-                except Exception as exc:
-                    db.execute("UPDATE monitors SET next_run_at=? WHERE id=?",
-                               ((datetime.now(timezone.utc).replace(microsecond=0).isoformat()),monitor["id"]))
+                except Exception:
+                    from datetime import timedelta
+                    retry=(datetime.now(timezone.utc)+timedelta(hours=max(6,int(monitor["interval_hours"])))).isoformat()
+                    db.execute("UPDATE monitors SET next_run_at=? WHERE id=?",(retry,monitor["id"]))
                     db.commit()
             db.close()
         except Exception:

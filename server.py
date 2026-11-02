@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """CashForge local-first Trend Radar. Python standard library only."""
 from __future__ import annotations
-import difflib, html, json, os, re, sqlite3, time, urllib.parse, urllib.request, xml.etree.ElementTree as ET
+import difflib, html, json, os, re, sqlite3, time, threading, urllib.parse, urllib.request, xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from cashforge_intelligence import run_analysis, build_markdown_report, build_html_report
 from cashforge_ai import chat as ai_chat, enrich_analysis, configured as ai_configured, AIUnavailable
 from cashforge_competitors import discover as discover_competitors
-from cashforge_monitor import init as init_monitors, create as create_monitor, list_all as list_monitors, set_enabled as set_monitor_enabled
+from cashforge_monitor import init as init_monitors, create as create_monitor, list_all as list_monitors, set_enabled as set_monitor_enabled, due as due_monitors, mark_run as mark_monitor_run, compare_runs
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -247,6 +247,12 @@ class Handler(BaseHTTPRequestHandler):
         elif path.path=="/api/ai/status": self.send(200,json.dumps({"configured":ai_configured(),"provider":"OpenRouter","model":os.environ.get("CASHFORGE_AI_MODEL","openai/gpt-oss-20b:free")}))
         elif path.path=="/api/monitors":
             db=connect(); self.send(200,json.dumps(list_monitors(db))); db.close()
+        elif path.path.startswith("/api/compare/"):
+            try: old_id,new_id=[int(x) for x in path.path.strip("/").split("/")[2:4]]
+            except Exception: return self.send(400,json.dumps({"error":"Use /api/compare/OLD_ID/NEW_ID"}))
+            old,new=get_run(old_id),get_run(new_id)
+            if not old or not new: return self.send(404,json.dumps({"error":"One or both runs were not found"}))
+            self.send(200,json.dumps(compare_runs(old,new),ensure_ascii=False))
         elif path.path.startswith("/api/run/") and path.path.endswith("/competitors"):
             try: rid=int(path.path.strip("/").split("/")[2])
             except (ValueError,IndexError): return self.send(400,json.dumps({"error":"Invalid run id"}))
@@ -303,8 +309,27 @@ if __name__=="__main__":
         except ValueError as exc: self.send(400,json.dumps({"error":str(exc)}))
         except Exception as exc: self.send(500,json.dumps({"error":"Research failed: "+str(exc)[:240]}))
 
+def monitor_worker():
+    while True:
+        try:
+            db=connect()
+            for monitor in due_monitors(db):
+                try:
+                    data=run_research({"topic":monitor["topic"],"objective":monitor["objective"],
+                                       "sources":json.loads(monitor["sources"])})
+                    mark_monitor_run(db,monitor["id"],data["run"]["id"],monitor["interval_hours"])
+                except Exception as exc:
+                    db.execute("UPDATE monitors SET next_run_at=? WHERE id=?",
+                               ((datetime.now(timezone.utc).replace(microsecond=0).isoformat()),monitor["id"]))
+                    db.commit()
+            db.close()
+        except Exception:
+            pass
+        time.sleep(60)
+
 if __name__=="__main__":
     connect().close()
+    threading.Thread(target=monitor_worker,daemon=True).start()
     print(f"CashForge running at http://{HOST}:{PORT}")
     print("Local-only dashboard. Press Ctrl+C to stop.")
     ThreadingHTTPServer((HOST,PORT),Handler).serve_forever()

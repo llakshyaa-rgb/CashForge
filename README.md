@@ -9,7 +9,9 @@ CashForge is a private-first, mobile-friendly opportunity research workspace. Th
 - Public-source discovery from Hacker News Algolia, Reddit's public JSON endpoints, and Google News RSS.
 - SQLite research library preserving past topics, objectives, selected source combinations, and results across refreshes.
 - Multi-angle topic discovery and grouped near-duplicate reporting, with representative links to inspect matching mentions.
-- Transparent heuristic scoring for discussion heat and evidence coverage.
+- A local evidence-analysis pipeline for theme discovery, recurring problem language, payment language, counter-signals, and cautious opportunity hypotheses.
+- Transparent, explainable opportunity scores with explicit confidence and competitor-research limitations.
+- A staged research review that separates collected evidence from hypotheses and unperformed analysis.
 - Source-level inspection, filters, export, and repeatable topic studies.
 - Clear distinction between observed signals and hypotheses.
 
@@ -31,8 +33,9 @@ CashForge uses port `8766` by default (Purffle can keep using `8765`). Open `htt
 2. CashForge searches up to five related query angles per selected source, with bounded requests (up to 35 Hacker News / Google News items per angle and up to 50 Reddit items per angle, subject to source limits).
 3. Exact URL duplicates and title-similar records are grouped rather than silently discarded; counts and representative links remain visible. All research runs are stored in a local SQLite database.
 4. Each signal retains its original URL, source, timestamp, and available engagement metadata.
-5. The dashboard shows observed discussion, source diversity, and a provisional evidence score. Scores are prioritization aids, not verified market demand.
-6. Open each source and decide what to validate next.
+5. CashForge runs a local analysis pass over retained evidence: related-theme grouping, problem-language and payment-language indicators, possible counter-signals, and a provisional opportunity score.
+6. The analysis explicitly marks competitor research as not run. A candidate cluster is not labelled a confirmed market gap, and scores are not verified demand or revenue.
+7. The dashboard shows the research stages, evidence counts, source links, and limitations. Open the original sources and decide what to validate next.
 
 ## Privacy and safety
 
@@ -49,4 +52,4 @@ The Trend Radar is the first working foundation. More CashForge modules (competi
 
 ## Inspiration and attribution
 
-The evidence-first workflow is informed by the MIT-licensed [Trend Opportunity Radar](https://github.com/datou202307-design/trend-opportunity-radar). CashForge is an independent implementation with its own UI, local storage, and collectors; it is not an official fork or affiliated product.
+Selected workflow ideas were informed by two MIT-licensed projects and one project with no declared licence. CashForge does not copy source code from the unlicensed project. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the repository-by-repository review and attribution.

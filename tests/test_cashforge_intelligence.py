@@ -1,6 +1,6 @@
 import unittest
 
-from cashforge_intelligence import group_evidence, run_analysis
+from cashforge_intelligence import group_evidence, run_analysis, build_markdown_report, build_html_report
 
 
 class IntelligenceTests(unittest.TestCase):
@@ -36,6 +36,15 @@ class IntelligenceTests(unittest.TestCase):
         }]
         result = run_analysis("invoicing", "research", signals, 2)
         self.assertEqual(result["evidence"]["retained_records"], 2)
+
+    def test_reports_are_generated(self):
+        result = run_analysis("invoicing", "research", [], 0)
+        run = {"created_at": "2026-11-02T00:00:00+00:00"}
+        markdown = build_markdown_report(result, run)
+        page = build_html_report(result, run)
+        self.assertIn("# CashForge research report", markdown)
+        self.assertIn("<!doctype html>", page.lower())
+        self.assertIn("Research limitations", markdown)
 
     def test_empty_evidence_is_safe(self):
         result = run_analysis("topic", "objective", [], 0)
